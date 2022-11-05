@@ -1,14 +1,26 @@
 import fs from 'fs/promises'
 import { header, MTProtoClass, namedImports } from './template'
 import fetch from 'node-fetch'
-import { getParamInputType } from './schemaParamParser'
+import { getParamInputType, ParamTypeResult } from './schemaParamParser'
 import { dirname } from 'path'
 import { fileURLToPath } from 'url'
 import dedent from 'dedent'
 
 const __dirname = dirname(fileURLToPath(import.meta.url)) + '/'
-
-const ident = (text: string[]) => text.map(line => '  ' + line).join('\n')
+const blacklistedInterfaces = [
+  'bool',
+  'boolTrue',
+  'boolFalse',
+  'true',
+  'null'
+]
+const blacklistedConstructors = [
+  'Bool',
+  'True',
+  'Vector',
+  'Vector t'
+]
+const ident = (text: string[], repeat = 1) => text.map(line => '  '.repeat(repeat) + line).join('\n')
 
 type Schema = {
   constructors: {
@@ -34,11 +46,39 @@ type Schema = {
 const response = await fetch('https://core.telegram.org/schema/json')
 const schema: Schema = await response.json() as Schema
 
+const generationStart = Date.now()
+
 let typesDefinitions = ''
 typesDefinitions += header
 typesDefinitions += MTProtoClass.replace('%CALL_METHOD_SIGNATURES%', generateMethodSignatures())
 typesDefinitions += generateInterfaces()
+typesDefinitions += '\n\n'
+typesDefinitions += generateConstructors()
+typesDefinitions += '\n\n'
 typesDefinitions += namedImports
+
+function formatParams([paramName, paramType]: [string, ParamTypeResult]) {
+  let definition = ''
+  definition += paramName
+
+  let paramDefinition = ''
+  if(paramType.isConstructor) {
+    paramDefinition = paramType.type.replace('.', '_')
+  } else {
+    paramDefinition = {
+      'number': 'number',
+      'string': 'string',
+      'boolean': 'boolean',
+      'bytes': 'Uint8Array'
+    }[paramType.type] as string
+  }
+  definition += `: ${/^!?X$/.test(paramDefinition) ? 'unknown' : paramDefinition}`
+  
+  if(paramType.array) {
+    definition += '[]'
+  }
+  return definition
+}
 
 function generateMethodSignatures(): string {
   const methodsDefinitions: string[] = []
@@ -48,38 +88,16 @@ function generateMethodSignatures(): string {
         .filter(param => param.name !== 'flags' && param.type !== '#')
         .map(param => [param.name, getParamInputType(param.type)])
     )
-    const paramsDefinitions: string[] = Object.entries(params).map(([paramName, paramType]) => {
-      let definition = ''
-      definition += paramName
-
-      let paramDefinition = ''
-      if(paramType.isConstructor) {
-        paramDefinition = paramType.type.replace('.', '_')
-      } else {
-        paramDefinition = {
-          'number': 'number',
-          'string': 'string',
-          'boolean': 'boolean',
-          'bytes': 'UInt8Array'
-        }[paramType.type] as string
-      }
-      definition += `: ${paramDefinition}`
-
-      // if(paramType.optional && paramType.optionalDefault !== null) {
-      //   definition += ` = ${paramType.optionalDefault}`
-      // }
-      
-      if(paramType.array) {
-        definition += '[]'
-      }
-      return definition
-    })
+    const paramsDefinitions: string[] = Object.entries(params).map(formatParams)
     const methodParams = paramsDefinitions.length > 0 ? `, params: { ${paramsDefinitions.join(', ')} }` : ''
     
     const methodResultType = getParamInputType(method.type)
     let methodResult = methodResultType.type.replace('.', '_')
-    if(methodResult === 'Bool') methodResult = 'boolean'
-    if(methodResultType.array) methodResult += '[]'
+    if(/^!?X$/.test(methodResult)) methodResult = 'unknown'
+    else {
+      if(methodResult === 'Bool') methodResult = 'boolean'
+      if(methodResultType.array) methodResult += '[]'
+    }
 
     methodsDefinitions.push(`call(method: '${method.method}'${methodParams}): Promise<${methodResult}>;`)
   }
@@ -90,21 +108,42 @@ function generateMethodSignatures(): string {
 function generateInterfaces(): string {
   const interfacesDefinitions: string[] = []
   for(const intf of schema.constructors) {
-    const params = Object.fromEntries(intf.params.map(param => [param.name, getParamInputType(param.type)]))
+    if(blacklistedInterfaces.includes(intf.predicate)) continue
+    const params = Object.fromEntries(
+      intf.params
+        .filter(param => param.name !== 'flags' && param.type !== '#')
+        .map(param => [param.name, getParamInputType(param.type)])
+    )
     let paramsDefinitions: string[] = Object.entries(params)
-      .map(([paramName, paramType]) => {
-        return `${paramName}: `
-      })
+      .map(formatParams)
+      .map(line => line + ';')
 
-    let interfaceDefinition = dedent`interface ${intf.predicate.replace('.', '_')} {
-      _: '${intf.predicate}';
-    ${ident(paramsDefinitions)}
+    let interfaceDefinition = dedent`export interface ${intf.predicate.replace('.', '_')} {
+      _: '${intf.predicate}';${paramsDefinitions.length > 0 ? '\n' + ident(paramsDefinitions, 3) : ''}
     }`
     interfaceDefinition.split('\n').map(line => '  ' + line).join('\n')
     interfacesDefinitions.push(interfaceDefinition)
   }
-  console.log('Generated', interfacesDefinitions.length, 'constructors definitions!')
-  return interfacesDefinitions.join('\n')//ident(interfacesDefinitions)
+  console.log('Generated', interfacesDefinitions.length, 'interfaces definitions!')
+  return interfacesDefinitions.join('\n')
 }
+
+function generateConstructors() {
+  const constructors: string[] = schema.constructors.map(c => c.type)
+  const constructorsNames: string[] = [...new Set(constructors)]
+  let constructorsDefinitions: string[] = []
+  for(const constructorName of constructorsNames) {
+    if(blacklistedConstructors.includes(constructorName)) continue
+    const predicatesList = schema.constructors
+      .filter(c => c.type === constructorName)
+      .map(c => c.predicate.replace('.', '_'))
+    constructorsDefinitions.push(`type ${constructorName.replace('.', '_')} = ${predicatesList.join(' | ')};`)
+  }
+  console.log('Generated', constructorsDefinitions.length, 'constructors definitions!')
+  return constructorsDefinitions.join('\n')
+}
+
+const generationEnd = Date.now()
+typesDefinitions += `// Auto-generated with https://github.com/VityaSchel/mtproto-core-typescript-codegen in ${((generationEnd - generationStart) / 1000).toFixed(3)}s`
 
 await fs.writeFile(__dirname + '../mtproto__core.d.ts', typesDefinitions, 'utf-8')
