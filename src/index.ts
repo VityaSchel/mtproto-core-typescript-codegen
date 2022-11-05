@@ -4,8 +4,11 @@ import fetch from 'node-fetch'
 import { getParamInputType } from './schemaParamParser'
 import { dirname } from 'path'
 import { fileURLToPath } from 'url'
+import dedent from 'dedent'
 
 const __dirname = dirname(fileURLToPath(import.meta.url)) + '/'
+
+const ident = (text: string[]) => text.map(line => '  ' + line).join('\n')
 
 type Schema = {
   constructors: {
@@ -14,7 +17,7 @@ type Schema = {
     params: {
       name: string
       type: string
-    }
+    }[]
     type: string
   }[]
   methods: {
@@ -34,12 +37,8 @@ const schema: Schema = await response.json() as Schema
 let typesDefinitions = ''
 typesDefinitions += header
 typesDefinitions += MTProtoClass.replace('%CALL_METHOD_SIGNATURES%', generateMethodSignatures())
-// typesDefinitions += generateInterfaces()
+typesDefinitions += generateInterfaces()
 typesDefinitions += namedImports
-
-// function generateInterfaces(): string {
-
-// }
 
 function generateMethodSignatures(): string {
   const methodsDefinitions: string[] = []
@@ -49,27 +48,26 @@ function generateMethodSignatures(): string {
         .filter(param => param.name !== 'flags' && param.type !== '#')
         .map(param => [param.name, getParamInputType(param.type)])
     )
-    // const params: string[] = 
     const paramsDefinitions: string[] = Object.entries(params).map(([paramName, paramType]) => {
       let definition = ''
       definition += paramName
 
-      if(paramType.optional && paramType.optionalDefault !== null) {
-        definition += ` = ${paramType.optionalDefault}`
+      let paramDefinition = ''
+      if(paramType.isConstructor) {
+        paramDefinition = paramType.type.replace('.', '_')
       } else {
-        let paramDefinition = ''
-        if(paramType.isConstructor) {
-          paramDefinition = paramType.type.replace('.', '_')
-        } else {
-          paramDefinition = {
-            'number': 'number',
-            'string': 'string',
-            'boolean': 'boolean',
-            'bytes': 'UInt8Array'
-          }[paramType.type] as string
-        }
-        definition += `: ${paramDefinition}`
+        paramDefinition = {
+          'number': 'number',
+          'string': 'string',
+          'boolean': 'boolean',
+          'bytes': 'UInt8Array'
+        }[paramType.type] as string
       }
+      definition += `: ${paramDefinition}`
+
+      // if(paramType.optional && paramType.optionalDefault !== null) {
+      //   definition += ` = ${paramType.optionalDefault}`
+      // }
       
       if(paramType.array) {
         definition += '[]'
@@ -78,13 +76,35 @@ function generateMethodSignatures(): string {
     })
     const methodParams = paramsDefinitions.length > 0 ? `, params: { ${paramsDefinitions.join(', ')} }` : ''
     
-    let methodResult = method.type.replace('.', '_')
+    const methodResultType = getParamInputType(method.type)
+    let methodResult = methodResultType.type.replace('.', '_')
     if(methodResult === 'Bool') methodResult = 'boolean'
+    if(methodResultType.array) methodResult += '[]'
 
     methodsDefinitions.push(`call(method: '${method.method}'${methodParams}): Promise<${methodResult}>;`)
   }
   console.log('Generated', methodsDefinitions.length, 'methods signatures!')
-  return methodsDefinitions.map(line => '  ' + line).join('\n')
+  return ident(methodsDefinitions)
+}
+
+function generateInterfaces(): string {
+  const interfacesDefinitions: string[] = []
+  for(const intf of schema.constructors) {
+    const params = Object.fromEntries(intf.params.map(param => [param.name, getParamInputType(param.type)]))
+    let paramsDefinitions: string[] = Object.entries(params)
+      .map(([paramName, paramType]) => {
+        return `${paramName}: `
+      })
+
+    let interfaceDefinition = dedent`interface ${intf.predicate.replace('.', '_')} {
+      _: '${intf.predicate}';
+    ${ident(paramsDefinitions)}
+    }`
+    interfaceDefinition.split('\n').map(line => '  ' + line).join('\n')
+    interfacesDefinitions.push(interfaceDefinition)
+  }
+  console.log('Generated', interfacesDefinitions.length, 'constructors definitions!')
+  return interfacesDefinitions.join('\n')//ident(interfacesDefinitions)
 }
 
 await fs.writeFile(__dirname + '../mtproto__core.d.ts', typesDefinitions, 'utf-8')
