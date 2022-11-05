@@ -46,6 +46,7 @@ function generateMethodSignatures(): string {
   for(const method of schema.methods) {
     const params = Object.fromEntries(
       method.params
+        .filter(param => param.name !== 'flags' && param.type !== '#')
         .map(param => [param.name, getParamInputType(param.type)])
     )
     // const params: string[] = 
@@ -72,11 +73,15 @@ function generateMethodSignatures(): string {
       }
       return definition
     })
-    //call(method: 'auth.signIn'): Promise<{ srp_id: number | string, current_algo: passwordKdfAlgoUnknown | passwordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow, srp_B: bytes }>;
-    methodsDefinitions.push(`call(method: '${method.method}'): Promise<{ ${paramsDefinitions.join(', ')} }>;`)
+    const methodParams = paramsDefinitions.length > 0 ? `, params: { ${paramsDefinitions.join(', ')} }` : ''
+    
+    let methodResult = method.type.replace('.', '_')
+    if(methodResult === 'Bool') methodResult = 'boolean'
+
+    methodsDefinitions.push(`call(method: '${method.method}'${methodParams}): Promise<${methodResult}>;`)
   }
   console.log('Generated', methodsDefinitions.length, 'methods signatures!')
-  return methodsDefinitions.join('\n')
+  return methodsDefinitions.map(line => '  ' + line).join('\n')
 }
 
 await fs.writeFile(__dirname + '../mtproto__core.d.ts', typesDefinitions, 'utf-8')

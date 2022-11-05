@@ -20,7 +20,7 @@ export const MTProtoClass = `export default class MTProto {
     dcId?: number,
     syncAuth?: boolean,
   }): Promise<object>;
-  %CALL_METHOD_SIGNATURES%
+%CALL_METHOD_SIGNATURES%
 
   setDefaultDc(dcId: number): Promise<string>;
 
