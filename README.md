@@ -17,7 +17,7 @@ Made for [https://github.com/DefinitelyTyped/DefinitelyTyped/pull/63089](https:/
 npm run build && npm run start
 ```
 
-It downloads latest schema from [https://core.telegram.org/schema/json](https://core.telegram.org/schema/json), parses it and converts to TypeScript definitions. Then it writes result to 'mtproto__core.d.ts' file.
+It downloads latest schema from [https://core.telegram.org/schema/json](https://core.telegram.org/schema/json), parses it and converts to TypeScript definitions. Then it writes result to '../index.d.ts' file (this project is intended to be used inside `DefinitelyTyped_repository/types/mtproto__core/codegen/` directory).
 
 ## License
 

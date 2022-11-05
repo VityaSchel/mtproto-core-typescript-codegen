@@ -1,9 +1,11 @@
 export const header = `// Type definitions for @mtproto/core 6.2
 // Project: https://github.com/alik0211/mtproto-core
 // Definitions by: Viktor Shchelochkov <https://github.com/VityaSchel>, Ali Gasymov <https://github.com/alik0211>
-// Definitions: https://github.com/DefinitelyTyped/DefinitelyTyped
+// Definitions: https://github.com/DefinitelyTyped/DefinitelyTyped`
 
-`
+export const disabledRules = `// Required for codegen
+// tslint:disable:unified-signatures
+// tslint:disable:max-line-length`
 
 export const MTProtoClass = `export default class MTProto {
   constructor(options: {

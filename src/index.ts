@@ -1,5 +1,5 @@
 import fs from 'fs/promises'
-import { header, MTProtoClass, namedImports } from './template'
+import { header, disabledRules, MTProtoClass, namedImports } from './template'
 import fetch from 'node-fetch'
 import { getParamInputType, ParamTypeResult } from './schemaParamParser'
 import { dirname } from 'path'
@@ -50,6 +50,9 @@ const generationStart = Date.now()
 
 let typesDefinitions = ''
 typesDefinitions += header
+typesDefinitions += '\n\n'
+typesDefinitions += disabledRules
+typesDefinitions += '\n\n'
 typesDefinitions += MTProtoClass.replace('%CALL_METHOD_SIGNATURES%', generateMethodSignatures())
 typesDefinitions += generateInterfaces()
 typesDefinitions += '\n\n'
@@ -137,7 +140,7 @@ function generateConstructors() {
     const predicatesList = schema.constructors
       .filter(c => c.type === constructorName)
       .map(c => c.predicate.replace('.', '_'))
-    constructorsDefinitions.push(`type ${constructorName.replace('.', '_')} = ${predicatesList.join(' | ')};`)
+    constructorsDefinitions.push(`export type ${constructorName.replace('.', '_')} = ${predicatesList.join(' | ')};`)
   }
   console.log('Generated', constructorsDefinitions.length, 'constructors definitions!')
   return constructorsDefinitions.join('\n')
@@ -146,4 +149,4 @@ function generateConstructors() {
 const generationEnd = Date.now()
 typesDefinitions += `// Auto-generated with https://github.com/VityaSchel/mtproto-core-typescript-codegen in ${((generationEnd - generationStart) / 1000).toFixed(3)}s`
 
-await fs.writeFile(__dirname + '../mtproto__core.d.ts', typesDefinitions, 'utf-8')
+await fs.writeFile(__dirname + '../../index.d.ts', typesDefinitions + '\n', 'utf-8')
