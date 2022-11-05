@@ -53,21 +53,24 @@ function generateMethodSignatures(): string {
     const paramsDefinitions: string[] = Object.entries(params).map(([paramName, paramType]) => {
       let definition = ''
       definition += paramName
-      if(paramType.optional) {
-        definition += '?: '
+
+      if(paramType.optional && paramType.optionalDefault !== null) {
+        definition += ` = ${paramType.optionalDefault}`
       } else {
-        definition += ': '
+        let paramDefinition = ''
+        if(paramType.isConstructor) {
+          paramDefinition = paramType.type.replace('.', '_')
+        } else {
+          paramDefinition = {
+            'number': 'number',
+            'string': 'string',
+            'boolean': 'boolean',
+            'bytes': 'UInt8Array'
+          }[paramType.type] as string
+        }
+        definition += `: ${paramDefinition}`
       }
-      if(paramType.isConstructor) {
-        definition += paramType.type.replace('.', '_')
-      } else {
-        definition += {
-          'number': 'number',
-          'string': 'string',
-          'boolean': 'boolean',
-          'bytes': 'UInt8Array'
-        }[paramType.type]
-      }
+      
       if(paramType.array) {
         definition += '[]'
       }
